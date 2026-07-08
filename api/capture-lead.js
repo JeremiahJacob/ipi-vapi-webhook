@@ -34,6 +34,9 @@ export default async function handler(req, res) {
           { name: "firstname", value: args.firstName ?? "" },
           { name: "email", value: args.email },
           { name: "company", value: args.company ?? "" },
+          // Prefer a phone the agent collected; fall back to the caller's own
+          // number on inbound phone calls.
+          { name: "phone", value: args.phone ?? msg.call?.customer?.number ?? "" },
           { name: "service", value: args.service ?? "" },
         ],
         context: { pageName: "Vapi Voice Agent (Vivian)" },

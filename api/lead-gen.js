@@ -93,7 +93,10 @@ Only include companies with a genuine, evidenced signal of need — not generic 
     },
     body: JSON.stringify({
       model: MODEL,
-      max_tokens: 2000,
+      // Generous budget: web search reasoning + tool calls eat into this
+      // budget before the model ever writes the final JSON, so a low limit
+      // here silently truncates the JSON output rather than erroring.
+      max_tokens: 8000,
       system: systemPrompt,
       messages: [{ role: 'user', content: `Find candidates for division: ${division.key}` }],
       tools: [{ type: 'web_search_20250305', name: 'web_search' }]
@@ -105,6 +108,13 @@ Only include companies with a genuine, evidenced signal of need — not generic 
   }
 
   const data = await res.json();
+
+  if (data.stop_reason === 'max_tokens') {
+    throw new Error(
+      `Response truncated (hit max_tokens) before JSON completed. Raise max_tokens further or reduce candidates requested.`
+    );
+  }
+
   const textBlocks = (data.content || [])
     .filter((b) => b.type === 'text')
     .map((b) => b.text)
@@ -115,8 +125,9 @@ Only include companies with a genuine, evidenced signal of need — not generic 
     const parsed = JSON.parse(cleaned);
     return Array.isArray(parsed) ? parsed : [];
   } catch (e) {
-    console.error(`[${division.key}] Failed to parse model output:`, cleaned.slice(0, 500));
-    return [];
+    // Surface this as a real error instead of silently returning zero leads,
+    // so a parsing regression shows up in the response body, not just logs.
+    throw new Error(`Failed to parse model output as JSON: ${cleaned.slice(0, 300)}`);
   }
 }
 

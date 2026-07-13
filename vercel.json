@@ -1,0 +1,8 @@
+{
+  "crons": [
+    {
+      "path": "/api/lead-gen",
+      "schedule": "0 6 * * 1"
+    }
+  ]
+}

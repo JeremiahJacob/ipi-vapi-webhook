@@ -212,6 +212,14 @@ async function createHubspotContact(lead, divisionKey, companyId) {
 
 const MIN_CONFIDENCE = 5;
 
+// Extends this function's max execution time beyond Vercel's default.
+// Note: Hobby plan caps this at 60s regardless of what's set here; Pro
+// plans can go up to 300s. If runs still time out on Hobby even with
+// divisions running in parallel, the plan itself is the limiting factor.
+export const config = {
+  maxDuration: 300
+};
+
 export default async function handler(req, res) {
   if (!CRON_SECRET) {
     return res.status(500).json({ error: 'CRON_SECRET is not configured' });
@@ -226,14 +234,23 @@ export default async function handler(req, res) {
 
   const summary = { created: [], skipped: [], errors: [] };
 
-  for (const division of DIVISIONS) {
+  // Run all 4 divisions' web searches concurrently instead of one after
+  // another — this is what was causing the timeout, since 4 sequential
+  // search+generation calls can easily add up to 2-3+ minutes.
+  const divisionResults = await Promise.allSettled(
+    DIVISIONS.map((division) => findLeadsForDivision(division))
+  );
+
+  for (let i = 0; i < DIVISIONS.length; i++) {
+    const division = DIVISIONS[i];
+    const result = divisionResults[i];
+
     let leads = [];
-    try {
-      leads = await findLeadsForDivision(division);
-    } catch (e) {
-      summary.errors.push({ division: division.key, stage: 'search', error: String(e) });
+    if (result.status === 'rejected') {
+      summary.errors.push({ division: division.key, stage: 'search', error: String(result.reason) });
       continue;
     }
+    leads = result.value;
 
     for (const lead of leads) {
       try {
